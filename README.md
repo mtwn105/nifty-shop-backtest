@@ -1,55 +1,114 @@
 # Nifty Shop Backtesting
 
-This project is for backtesting the "Nifty Shop" trading strategy on the Nifty 50 index.
+This project provides a comprehensive backtest for the "Nifty Shop" trading strategy on the Nifty 50 index, allowing for detailed performance analysis and strategy refinement.
 
 ## Strategy: Nifty Shop
 
-The "Nifty Shop" strategy is designed for beginners and focuses on Nifty50 stocks.
+The "Nifty Shop" strategy is a mean-reversion approach designed for beginners, focusing on systematically buying dips in Nifty 50 stocks.
 
 ### Entry Rules (checked daily at 3:20 PM)
 
-- **Scan for Dips:** Identify the top five Nifty50 stocks that are trading the furthest below their 20-day moving average.
-- **Buy New Positions:** From the list of five, you can buy up to two stocks that you don't already own.
-- **Averaging Down:** If you already own all five of the identified stocks, you can "average down" on one of your existing holdings. This means buying more of a stock that has dropped more than 3% from your last purchase price, prioritizing the one with the biggest drop.
+- **Scan for Dips:** Identify the top five Nifty 50 stocks that are trading the furthest below their 20-day moving average (20 SMA).
+- **Buy New Positions:** From this list, the script can buy up to a configurable number of new stocks (default is 1) that are not already in the portfolio.
+- **Averaging Down:** If all top fallers are already held, the script can "average down" on an existing position if its price has dropped by a specified percentage (e.g., 3%) from the last purchase price. It prioritizes the one with the biggest current drop.
 
 ### Exit Rules (checked daily at 3:20 PM)
 
-- **Check for Gains:** Look for any stock in your portfolio that is trading more than 5% above your average purchase price.
-- **Sell for Profit:** Sell only one stock per day, choosing the one that has the highest gain.
+- **Check for Gains:** The script scans the portfolio for any stock trading above a specified profit target (e.g., 5%) from its average purchase price.
+- **Sell for Profit:** If multiple stocks meet the profit criteria, the script sells only one per day—the one with the highest percentage gain.
 
 ### Capital Allocation
 
-- **Fixed Amount:** You can choose to invest a fixed amount, for example, 15,000 per trade.
-- **Dynamic Amount:** Alternatively, you can divide your total trading capital by 40 and use that amount for each trade. This allows your investment size to grow as your capital grows.
+The script supports two sizing models:
 
-## Installation
+- **Fixed Amount:** A constant, predefined amount is invested in each trade.
+- **Dynamic Amount:** A percentage of the total current portfolio value is invested in each trade (e.g., 1/40th of the portfolio).
 
-To install the required dependencies, run the following command:
+---
+
+## How to Use
+
+### 1. Installation
+
+Install the required Python libraries using the `requirements.txt` file:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+### 2. Configuration
 
-To run the backtest, execute the `nifty_shop_backtest_v4.py` script:
+Before running the backtest, you can customize the strategy parameters in the `nifty_shop_backtest_v4.py` script under the **MASTER CONFIGURATION & STRATEGY RULES** section.
+
+Key parameters you can change:
+
+- `START_DATE` / `END_DATE`: The period for the backtest.
+- `INITIAL_CAPITAL`: The starting amount for the simulation.
+- `PROFIT_TARGET_PERCENT`: The gain required to trigger a sell.
+- `AVERAGING_TRIGGER_PERCENT`: The loss required to trigger an average-down buy.
+- `MAX_NEW_BUYS_PER_DAY`: Limits how many new stocks can be bought in a single day.
+- `TRADE_AMOUNT_FIXED` / `DYNAMIC_SIZING_DIVISOR`: Controls the trade size for the two models.
+- `ENABLE_SIP`: Set to `True` to simulate regular monthly investments.
+- `RUN_FIXED_SIZING_TEST` / `RUN_DYNAMIC_SIZING_TEST`: Booleans to control which backtesting models to run.
+
+### 3. Execution
+
+Run the backtest from your terminal:
 
 ```bash
 python nifty_shop_backtest_v4.py
 ```
 
-You can configure the backtest by editing the "MASTER CONFIGURATION & STRATEGY RULES" section in the script. You can enable or disable fixed and dynamic sizing tests using `RUN_FIXED_SIZING_TEST` and `RUN_DYNAMIC_SIZING_TEST` variables.
+---
 
-## Backtest Output
+## Understanding the Backtest Script
 
-The script will output the following:
+The `nifty_shop_backtest_v4.py` script is organized into four main parts:
 
-- **Detailed Strategy Metrics:** A comprehensive report in the console including CAGR, XIRR, Alpha, Beta, Sharpe Ratio, Sortino Ratio, Max Drawdown, and more.
-- **Quarterly Trade Grid:** A summary of buy and sell transactions per quarter.
-- **Top Trades:** Lists of top 5 trades by averaging events and profitability (both percentage and amount).
-- **Transaction Logs:** The last 10 transactions and last 10 closed trades are displayed. A full `trade_log.csv` is also generated.
-- **Final Holdings:** A summary of the portfolio at the end of the backtest period.
-- **Equity Curve Plot:** A chart comparing the performance of the strategy (with fixed and/or dynamic sizing) against the NIFTYBEES benchmark.
+1.  **Configuration & Data Fetching:**
+
+    - Sets all strategy rules, dates, and capital settings.
+    - Loads historical Nifty 50 constituents from `nifty50.csv` to ensure the backtest uses the correct stocks for any given date.
+    - Downloads all required historical price data from Yahoo Finance using the `yfinance` library.
+
+2.  **Backtesting Engine (`run_backtest` function):**
+
+    - This is the core of the simulation. It iterates through each day in the specified date range.
+    - On each day, it processes SIP injections, checks for sell signals based on profit targets, and then checks for buy signals based on the 20 SMA deviation.
+    - It meticulously logs every transaction (buy, sell, average, SIP) and calculates the portfolio's total value daily.
+    - It handles portfolio management, including cash, holdings, and calculating average costs.
+
+3.  **Metrics Calculation & Reporting:**
+
+    - After the simulation loop, this section calculates a wide array of performance metrics.
+    - **Returns Analysis:** CAGR (Compounded Annual Growth Rate) and XIRR (for cash-flow-adjusted returns).
+    - **Risk-Adjusted Returns:** Sharpe Ratio (returns vs. volatility) and Sortino Ratio (returns vs. downside volatility).
+    - **Risk Metrics:** Maximum Drawdown (largest peak-to-trough drop) and Calmar Ratio (CAGR vs. Max Drawdown).
+    - **Market Comparison:** Alpha (outperformance vs. benchmark) and Beta (volatility relative to the benchmark).
+    - The results are printed to the console in a structured format.
+
+4.  **Plotting:**
+    - Generates a comparative equity curve chart using `matplotlib`.
+    - This visualizes the growth of the strategy's portfolio value against the NIFTYBEES index, providing an intuitive understanding of its performance over time.
+
+---
+
+## Backtest Output Explained
+
+The script provides a rich set of outputs to help you analyze the strategy's performance:
+
+- **Console Report:**
+  - **Detailed Strategy Metrics:** The main table showing CAGR, XIRR, Alpha, Beta, Sharpe Ratio, etc.
+  - **Quarterly Trade Grid:** A pivot table showing the number of buys and sells in each quarter, helping to identify periods of high/low activity.
+  - **Top Trades Analysis:** Lists of the top 5 trades based on the number of averaging events and profitability (both by percentage and absolute amount).
+  - **Recent Activity:** The last 10 transactions and the last 10 closed trades are displayed for a recent snapshot.
+  - **Final Holdings:** A summary of all stocks held in the portfolio at the end of the backtest period.
+- **CSV File:**
+  - `trade_log.csv`: A detailed CSV file is generated, containing a timestamped record of every single transaction made during the backtest. This is useful for in-depth, external analysis.
+- **Chart:**
+  - **Equity Curve Plot:** A PNG window will pop up showing the strategy's performance graph.
+
+---
 
 ## Credits
 
