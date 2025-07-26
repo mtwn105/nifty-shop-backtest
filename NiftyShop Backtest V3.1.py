@@ -3,20 +3,21 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-from scipy.optimize import newton
 
 
-def xirr(dates, values):
+def xirr(dates, values, guess=0.1):
     """
-    Calculate the Internal Rate of Return (XIRR).
+    Calculate the Internal Rate of Return (XIRR) using a manual Newton-Raphson implementation.
     """
     if not values or len(dates) != len(values):
         return None
 
+    # Ensure transactions are sorted by date
     transactions = sorted(zip(dates, values))
     dates, values = zip(*transactions)
 
-    years = [(d - dates[0]).days / 365.0 for d in dates]
+    # Use 365.25 to account for leap years, which is more accurate
+    years = [(d - dates[0]).days / 365.25 for d in dates]
 
     def npv(rate):
         return sum(v / ((1 + rate) ** y) for v, y in zip(values, years))
@@ -25,15 +26,21 @@ def xirr(dates, values):
         # Derivative of the NPV function with respect to the rate
         return sum(-y * v / ((1 + rate) ** (y + 1)) for v, y in zip(values, years))
 
-    try:
-        # Provide the derivative to the Newton-Raphson solver for better convergence
-        return newton(npv, 0.1, fprime=d_npv)
-    except (RuntimeError, TypeError):
-        # Fallback to the solver without the derivative if it fails
-        try:
-            return newton(npv, 0.1)
-        except (RuntimeError, TypeError):
+    # --- Manual Newton-Raphson Implementation ---
+    rate = guess
+    for _ in range(100):  # Max 100 iterations
+        npv_val = npv(rate)
+        d_npv_val = d_npv(rate)
+
+        if abs(npv_val) < 1e-6:  # Convergence check
+            return rate
+
+        if d_npv_val == 0:  # Avoid division by zero
             return None
+
+        rate = rate - npv_val / d_npv_val
+
+    return None  # Return None if no convergence
 
 
 # --- 1. MASTER CONFIGURATION & STRATEGY RULES ---
@@ -112,9 +119,15 @@ def run_backtest(sizing_method):
     portfolio = {"cash": INITIAL_CAPITAL, "holdings": {}, "value_history": []}
     transactions_list = []
     closed_trades_log = []
-    cash_flows = [(pd.to_datetime(START_DATE), -INITIAL_CAPITAL)]
+    cash_flows = []  # Initialize empty cash flows for XIRR
 
-    backtest_range = pd.date_range(start=START_DATE, end=END_DATE)
+    # Find the first actual trading day to start the backtest
+    first_trading_day = stock_data.loc[
+        stock_data.index >= pd.to_datetime(START_DATE)
+    ].index.min()
+
+    # Adjust backtest range to start from the first trading day
+    backtest_range = pd.date_range(start=first_trading_day, end=END_DATE)
     profit_target_multiplier = 1 + (PROFIT_TARGET_PERCENT / 100)
     averaging_trigger_multiplier = 1 - (AVERAGING_TRIGGER_PERCENT / 100)
 
@@ -429,9 +442,25 @@ def run_backtest(sizing_method):
         ) * 100
 
         # --- XIRR Calculation ---
-        cash_flows.append((pf_value_df.index[-1], final_portfolio_value))
-        dates, values = zip(*cash_flows)
-        strategy_xirr = xirr(dates, values)
+        # Get the market value of the final holdings, which represents the final cash inflow
+        final_holdings_value = pf_value_df["Deployed Capital"].iloc[-1]
+        cash_flows.append((pf_value_df.index[-1], final_holdings_value))
+
+        # Aggregate cash flows by date, which is a requirement for some XIRR implementations
+        # and a good practice to ensure consistency.
+        from collections import defaultdict
+
+        aggregated_cash_flows = defaultdict(float)
+        for date, value in cash_flows:
+            aggregated_cash_flows[date] += value
+
+        # Convert the aggregated dictionary back to sorted lists
+        sorted_cash_flows = sorted(aggregated_cash_flows.items())
+        if not sorted_cash_flows:
+            strategy_xirr = None
+        else:
+            dates, values = zip(*sorted_cash_flows)
+            strategy_xirr = xirr(dates, values)
 
         # For CAGR, use the original (un-daily) nifty data over the same date range
         nifty_date_range = nifty_data.loc[pf_value_df.index[0] : pf_value_df.index[-1]]
