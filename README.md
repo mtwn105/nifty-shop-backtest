@@ -110,6 +110,37 @@ The script provides a rich set of outputs to help you analyze the strategy's per
 
 ---
 
+## Results
+
+### Equity Curve
+
+![Equity Curve](results/equity.png)
+
+### Performance Summary (Jan 2020 - Jul 2025)
+
+The backtest was run with the following configuration:
+
+- **Initial Capital:** ₹1,000,000.00
+- **Sizing Model:** Dynamic (1/40th of portfolio value per trade)
+- **Profit Target:** 5.0%
+- **Averaging Trigger:** 3.0% Drop
+- **Max New Buys Per Day:** 1
+- **Max Averaging:** Unlimited
+- **SIP Enabled:** No
+
+The key results for this configuration are:
+
+- **Total Return:** 175.14%
+- **Strategy CAGR:** 19.96%
+- **Strategy XIRR:** 19.44% (vs. NIFTYBEES CAGR of 15.04%)
+- **Alpha (Excess Return):** 4.92%
+- **Maximum Drawdown:** -28.23%
+- **Sharpe Ratio:** 0.64
+
+This demonstrates that the strategy outperformed the benchmark during the tested period. For a full detailed breakdown, please run the backtest script.
+
+---
+
 ## Credits
 
 This strategy was inspired by the "Nifty Shop" concept by **fab trader**. You can watch the original video here: [https://www.youtube.com/watch?v=GQ3gjYaislM](https://www.youtube.com/watch?v=GQ3gjYaislM)

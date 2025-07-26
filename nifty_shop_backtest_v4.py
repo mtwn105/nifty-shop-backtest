@@ -48,8 +48,8 @@ def xirr(dates, values, guess=0.1):
 # -- General Settings --
 START_DATE = "2020-01-01"
 END_DATE = "2025-07-25"
-INITIAL_CAPITAL = 50000.00
-FLAT_BROKERAGE_FEE = 0.00
+INITIAL_CAPITAL = 1000000.00
+FLAT_BROKERAGE_FEE = 20.00
 RISK_FREE_RATE_ANNUAL = 0.07  # Example: 7% for risk-adjusted return calculations
 
 # -- Strategy Rules --
@@ -62,7 +62,7 @@ MAX_AVERAGING_EVENTS = None  # Set to None for no limit
 SELL_IF_REMOVED_FROM_NIFTY50 = False
 
 # -- SIP Settings --
-ENABLE_SIP = True
+ENABLE_SIP = False
 SIP_AMOUNT = 10000.00
 SIP_DAY = 1
 
