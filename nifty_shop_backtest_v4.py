@@ -46,23 +46,23 @@ def xirr(dates, values, guess=0.1):
 # --- 1. MASTER CONFIGURATION & STRATEGY RULES ---
 
 # -- General Settings --
-START_DATE = "2021-01-01"
-END_DATE = datetime.today().strftime("%Y-%m-%d")
+START_DATE = "2015-01-01"
+END_DATE = "2025-07-25"
 INITIAL_CAPITAL = 100000.00
 FLAT_BROKERAGE_FEE = 0.00
 RISK_FREE_RATE_ANNUAL = 0.07  # Example: 7% for risk-adjusted return calculations
 
 # -- Strategy Rules --
-PROFIT_TARGET_PERCENT = 5.0
-AVERAGING_TRIGGER_PERCENT = 3.0
+PROFIT_TARGET_PERCENT = 5
+AVERAGING_TRIGGER_PERCENT = 3
 MAX_NEW_BUYS_PER_DAY = 1
 TRADE_AMOUNT_FIXED = 3000.00
 DYNAMIC_SIZING_DIVISOR = 40
 SELL_IF_REMOVED_FROM_NIFTY50 = False
 
 # -- Control Which Backtests to Run --
-RUN_FIXED_SIZING_TEST = True
-RUN_DYNAMIC_SIZING_TEST = False
+RUN_FIXED_SIZING_TEST = False
+RUN_DYNAMIC_SIZING_TEST = True
 
 # --- (No changes needed below this line) ---
 
