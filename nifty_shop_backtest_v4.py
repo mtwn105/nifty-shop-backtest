@@ -46,9 +46,9 @@ def xirr(dates, values, guess=0.1):
 # --- 1. MASTER CONFIGURATION & STRATEGY RULES ---
 
 # -- General Settings --
-START_DATE = "2015-01-01"
+START_DATE = "2020-01-01"
 END_DATE = "2025-07-25"
-INITIAL_CAPITAL = 100000.00
+INITIAL_CAPITAL = 50000.00
 FLAT_BROKERAGE_FEE = 0.00
 RISK_FREE_RATE_ANNUAL = 0.07  # Example: 7% for risk-adjusted return calculations
 
@@ -58,7 +58,13 @@ AVERAGING_TRIGGER_PERCENT = 3
 MAX_NEW_BUYS_PER_DAY = 1
 TRADE_AMOUNT_FIXED = 3000.00
 DYNAMIC_SIZING_DIVISOR = 40
+MAX_AVERAGING_EVENTS = None  # Set to None for no limit
 SELL_IF_REMOVED_FROM_NIFTY50 = False
+
+# -- SIP Settings --
+ENABLE_SIP = True
+SIP_AMOUNT = 10000.00
+SIP_DAY = 1
 
 # -- Control Which Backtests to Run --
 RUN_FIXED_SIZING_TEST = False
@@ -130,10 +136,34 @@ def run_backtest(sizing_method):
     backtest_range = pd.date_range(start=first_trading_day, end=END_DATE)
     profit_target_multiplier = 1 + (PROFIT_TARGET_PERCENT / 100)
     averaging_trigger_multiplier = 1 - (AVERAGING_TRIGGER_PERCENT / 100)
+    last_sip_month = None
+
+    # Add initial capital to cash flows for XIRR calculation
+    cash_flows.append((first_trading_day, -INITIAL_CAPITAL))
 
     for current_date in backtest_range:
         if current_date not in stock_data.index:
             continue
+
+        # --- SIP Injection Logic ---
+        if ENABLE_SIP and current_date.day >= SIP_DAY:
+            current_month_year = (current_date.year, current_date.month)
+            if current_month_year != last_sip_month:
+                portfolio["cash"] += SIP_AMOUNT
+                cash_flows.append((current_date, -SIP_AMOUNT))
+                last_sip_month = current_month_year
+                transactions_list.append(
+                    {
+                        "Date": current_date,
+                        "Ticker": "SIP",
+                        "Type": "DEPOSIT",
+                        "Price": SIP_AMOUNT,
+                        "Quantity": 1,
+                        "PnL_%": 0,
+                        "Capital": portfolio["cash"],
+                        "Reason": "Monthly SIP",
+                    }
+                )
 
         current_holdings_value = sum(
             stock_data.loc[current_date, ticker] * lot["quantity"]
@@ -177,7 +207,6 @@ def run_backtest(sizing_method):
                         else 0
                     )
                     portfolio["cash"] += sell_value - FLAT_BROKERAGE_FEE
-                    cash_flows.append((current_date, sell_value))
                     transactions_list.append(
                         {
                             "Date": current_date,
@@ -197,6 +226,7 @@ def run_backtest(sizing_method):
                             "ExitDate": current_date,
                             "AvgCost": avg_cost_to_log,
                             "ExitPrice": sell_price,
+                            "Quantity": total_qty_sold,
                             "AveragingEvents": sum(
                                 1 for lot in lots if lot["type"] == "AVG"
                             ),
@@ -235,7 +265,6 @@ def run_backtest(sizing_method):
                 else 0
             )
             portfolio["cash"] += sell_value - FLAT_BROKERAGE_FEE
-            cash_flows.append((current_date, sell_value))
             transactions_list.append(
                 {
                     "Date": current_date,
@@ -256,6 +285,7 @@ def run_backtest(sizing_method):
                     "ExitDate": current_date,
                     "AvgCost": avg_cost_to_log,
                     "ExitPrice": sell_price,
+                    "Quantity": total_qty_sold,
                     "AveragingEvents": sum(1 for lot in lots if lot["type"] == "AVG"),
                 }
             )
@@ -306,7 +336,6 @@ def run_backtest(sizing_method):
                             and portfolio["cash"] >= buy_value + FLAT_BROKERAGE_FEE
                         ):
                             portfolio["cash"] -= buy_value + FLAT_BROKERAGE_FEE
-                            cash_flows.append((current_date, -buy_value))
                             portfolio["holdings"][ticker] = [
                                 {
                                     "date": current_date,
@@ -337,17 +366,22 @@ def run_backtest(sizing_method):
                     avg_price = sum(l["quantity"] * l["price"] for l in lots) / sum(
                         l["quantity"] for l in lots
                     )
+                    current_averages = sum(1 for lot in lots if lot["type"] == "AVG")
                     if (
-                        stock_data.loc[current_date, ticker]
-                        <= avg_price * averaging_trigger_multiplier
+                        MAX_AVERAGING_EVENTS is None
+                        or current_averages < MAX_AVERAGING_EVENTS
                     ):
-                        eligible_for_avg.append(
-                            (
-                                ticker,
-                                (stock_data.loc[current_date, ticker] - avg_price)
-                                / avg_price,
+                        if (
+                            stock_data.loc[current_date, ticker]
+                            <= avg_price * averaging_trigger_multiplier
+                        ):
+                            eligible_for_avg.append(
+                                (
+                                    ticker,
+                                    (stock_data.loc[current_date, ticker] - avg_price)
+                                    / avg_price,
+                                )
                             )
-                        )
             if eligible_for_avg:
                 eligible_for_avg.sort(key=lambda x: x[1])
                 ticker_to_avg, _ = eligible_for_avg[0]
@@ -360,7 +394,6 @@ def run_backtest(sizing_method):
                         and portfolio["cash"] >= buy_value + FLAT_BROKERAGE_FEE
                     ):
                         portfolio["cash"] -= buy_value + FLAT_BROKERAGE_FEE
-                        cash_flows.append((current_date, -buy_value))
                         portfolio["holdings"][ticker_to_avg].append(
                             {
                                 "date": current_date,
@@ -412,6 +445,14 @@ def run_backtest(sizing_method):
         f"Profit Target: {PROFIT_TARGET_PERCENT:.1f}% | Averaging Trigger: {AVERAGING_TRIGGER_PERCENT:.1f}% Drop"
     )
     print(f"Max New Buys Per Day: {MAX_NEW_BUYS_PER_DAY}")
+    max_avg_text = (
+        "Unlimited" if MAX_AVERAGING_EVENTS is None else str(MAX_AVERAGING_EVENTS)
+    )
+    print(f"Max Averaging Allowed: {max_avg_text}")
+    if ENABLE_SIP:
+        print(f"SIP Enabled: Yes (₹{SIP_AMOUNT:,.2f} on day {SIP_DAY} of each month)")
+    else:
+        print("SIP Enabled: No")
 
     if (
         not pf_value_df.empty
@@ -614,6 +655,56 @@ def run_backtest(sizing_method):
                 ].to_string(index=False)
             )
 
+        # --- Top 5 Profitable Trades by Percentage ---
+        trades_df["PnL_%"] = (
+            (trades_df["ExitPrice"] - trades_df["AvgCost"]) / trades_df["AvgCost"]
+        ) * 100
+        profitable_trades = trades_df[trades_df["PnL_%"] > 0].copy()
+        if not profitable_trades.empty:
+            top_5_percent_trades = profitable_trades.sort_values(
+                by="PnL_%", ascending=False
+            ).head(5)
+            top_5_percent_trades["EntryDate"] = top_5_percent_trades[
+                "EntryDate"
+            ].dt.strftime("%Y-%m-%d")
+            top_5_percent_trades["ExitDate"] = top_5_percent_trades[
+                "ExitDate"
+            ].dt.strftime("%Y-%m-%d")
+            top_5_percent_trades["PnL_%"] = top_5_percent_trades["PnL_%"].map(
+                "{:.2f}%".format
+            )
+            print("\n--- Top 5 Profitable Trades by Percentage ---")
+            print(
+                top_5_percent_trades[
+                    ["Ticker", "EntryDate", "ExitDate", "PnL_%"]
+                ].to_string(index=False)
+            )
+
+        # --- Top 5 Profitable Trades by Amount ---
+        trades_df["PnL_Amount"] = (
+            trades_df["ExitPrice"] - trades_df["AvgCost"]
+        ) * trades_df["Quantity"]
+        profitable_trades_amount = trades_df[trades_df["PnL_Amount"] > 0].copy()
+        if not profitable_trades_amount.empty:
+            top_5_amount_trades = profitable_trades_amount.sort_values(
+                by="PnL_Amount", ascending=False
+            ).head(5)
+            top_5_amount_trades["EntryDate"] = top_5_amount_trades[
+                "EntryDate"
+            ].dt.strftime("%Y-%m-%d")
+            top_5_amount_trades["ExitDate"] = top_5_amount_trades[
+                "ExitDate"
+            ].dt.strftime("%Y-%m-%d")
+            top_5_amount_trades["PnL_Amount"] = top_5_amount_trades["PnL_Amount"].map(
+                "₹{:,.2f}".format
+            )
+            print("\n--- Top 5 Profitable Trades by Amount ---")
+            print(
+                top_5_amount_trades[
+                    ["Ticker", "EntryDate", "ExitDate", "PnL_Amount"]
+                ].to_string(index=False)
+            )
+
     if not transactions_log_df.empty:
         buy_avg_transactions = transactions_log_df[
             transactions_log_df["Type"].isin(["BUY", "AVG"])
@@ -727,21 +818,15 @@ if backtest_results:
         / nifty_start_value
     ) * backtest_results[first_result_key]["Value"].iloc[0]
 
-    ax2 = ax1.twinx()
-    ax2.plot(
+    ax1.plot(
         nifty_performance.index,
         nifty_performance,
         color="red",
         linestyle="--",
         linewidth=2,
-        label="NIFTYBEES Index",
+        label="NIFTYBEES Index (Normalized)",
     )
-    ax2.set_ylabel("NIFTYBEES Normalized Value", fontsize=12, color="red")
-    ax2.tick_params(axis="y", labelcolor="red")
-
-    lines, labels = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax2.legend(lines + lines2, labels + labels2, loc="upper left")
+    ax1.legend(loc="upper left")
 
     ax1.set_title("Comparative Equity Curve: Fixed vs. Dynamic Sizing", fontsize=16)
     ax1.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.5)
