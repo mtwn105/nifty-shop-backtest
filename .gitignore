@@ -10,5 +10,4 @@ wheels/
 .venv
 venv
 
-trade_log.csv
-xirr_debug_flows.csv
+*.csv

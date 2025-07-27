@@ -127,15 +127,17 @@ The backtest was run with the following configuration:
 - **Max New Buys Per Day:** 1
 - **Max Averaging:** Unlimited
 - **SIP Enabled:** No
+- **Reinvest Dividends:** Yes
 
 The key results for this configuration are:
 
-- **Total Return:** 175.14%
-- **Strategy CAGR:** 19.96%
-- **Strategy XIRR:** 19.44% (vs. NIFTYBEES CAGR of 15.04%)
-- **Alpha (Excess Return):** 4.92%
-- **Maximum Drawdown:** -28.23%
-- **Sharpe Ratio:** 0.64
+- **Total Return:** 213.20%
+- **Total Dividend Income:** ₹172,761.59
+- **Strategy CAGR:** 22.79%
+- **Strategy XIRR:** 22.63% (vs. NIFTYBEES CAGR of 15.04%)
+- **Alpha (Excess Return):** 7.75%
+- **Maximum Drawdown:** -26.58%
+- **Sharpe Ratio:** 0.79
 
 This demonstrates that the strategy outperformed the benchmark during the tested period. For a full detailed breakdown, please run the backtest script.
 

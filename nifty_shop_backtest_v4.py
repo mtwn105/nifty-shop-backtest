@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+from queue import Queue
+from threading import Thread
 
 
 def xirr(dates, values, guess=0.1):
@@ -66,6 +68,9 @@ ENABLE_SIP = False
 SIP_AMOUNT = 10000.00
 SIP_DAY = 1
 
+# -- Dividend Settings --
+REINVEST_DIVIDENDS = True
+
 # -- Control Which Backtests to Run --
 RUN_FIXED_SIZING_TEST = False
 RUN_DYNAMIC_SIZING_TEST = True
@@ -118,6 +123,45 @@ sma_20 = stock_data.rolling(window=20).mean()
 print("Data fetching complete.")
 
 
+# --- Optimized Dividend Data Fetching ---
+def fetch_single_dividend(ticker, q):
+    """Fetches dividend data for a single ticker and puts it in a queue."""
+    try:
+        stock_obj = yf.Ticker(ticker)
+        dividends = stock_obj.dividends
+        if not dividends.empty:
+            dividends_in_range = dividends.loc[START_DATE:END_DATE]
+            if not dividends_in_range.empty:
+                dividends_in_range.index = dividends_in_range.index.tz_localize(None)
+                q.put({ticker: dividends_in_range})
+    except Exception:
+        pass  # Ignore tickers that fail
+
+
+def get_all_dividends_threaded(tickers):
+    """Fetches dividend data for a list of tickers using multiple threads."""
+    print("Fetching dividend data (threaded)...")
+    q = Queue()
+    threads = []
+    for ticker in tickers:
+        thread = Thread(target=fetch_single_dividend, args=(ticker, q))
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()  # Wait for all threads to finish
+
+    all_dividends = {}
+    while not q.empty():
+        all_dividends.update(q.get())
+
+    print("Dividend data fetching complete.")
+    return all_dividends
+
+
+all_dividends = get_all_dividends_threaded(all_tickers_to_fetch)
+
+
 # --- 2. BACKTESTING FUNCTION (MODULARIZED) ---
 def run_backtest(sizing_method):
     print(f"\n{'='*40}\n RUNNING BACKTEST (SIZING METHOD: {sizing_method}) \n{'='*40}")
@@ -126,6 +170,7 @@ def run_backtest(sizing_method):
     transactions_list = []
     closed_trades_log = []
     cash_flows = []  # Initialize empty cash flows for XIRR
+    non_reinvested_dividends = 0  # Track dividends separately if not reinvested
 
     # Find the first actual trading day to start the backtest
     first_trading_day = stock_data.loc[
@@ -164,6 +209,33 @@ def run_backtest(sizing_method):
                         "Reason": "Monthly SIP",
                     }
                 )
+
+        # --- Dividend Income Logic ---
+        # Check for dividends on the current date for all held stocks
+        for ticker, lots in portfolio["holdings"].items():
+            if ticker in all_dividends and current_date in all_dividends[ticker].index:
+                dividend_per_share = all_dividends[ticker].loc[current_date]
+                total_quantity = sum(lot["quantity"] for lot in lots)
+
+                if total_quantity > 0 and dividend_per_share > 0:
+                    total_dividend_received = dividend_per_share * total_quantity
+                    if REINVEST_DIVIDENDS:
+                        portfolio["cash"] += total_dividend_received
+                    else:
+                        non_reinvested_dividends += total_dividend_received
+
+                    transactions_list.append(
+                        {
+                            "Date": current_date,
+                            "Ticker": ticker,
+                            "Type": "DIVIDEND",
+                            "Price": dividend_per_share,
+                            "Quantity": total_quantity,
+                            "PnL_%": 0,  # Not applicable for dividends
+                            "Capital": portfolio["cash"],
+                            "Reason": f"Dividend Received (₹{dividend_per_share:.2f}/share)",
+                        }
+                    )
 
         current_holdings_value = sum(
             stock_data.loc[current_date, ticker] * lot["quantity"]
@@ -432,6 +504,7 @@ def run_backtest(sizing_method):
 
     # --- Reporting for this run ---
     pf_value_df = pd.DataFrame(portfolio["value_history"]).set_index("Date")
+    transactions_log_df = pd.DataFrame(transactions_list)  # For unified reporting
 
     print("\n--- Strategy Assumptions ---")
     if sizing_method == "FIXED":
@@ -453,6 +526,7 @@ def run_backtest(sizing_method):
         print(f"SIP Enabled: Yes (₹{SIP_AMOUNT:,.2f} on day {SIP_DAY} of each month)")
     else:
         print("SIP Enabled: No")
+    print(f"Reinvest Dividends: {'Yes' if REINVEST_DIVIDENDS else 'No'}")
 
     if (
         not pf_value_df.empty
@@ -460,6 +534,8 @@ def run_backtest(sizing_method):
     ):
         years = (pf_value_df.index[-1] - pf_value_df.index[0]).days / 365.25
         final_portfolio_value = pf_value_df["Value"].iloc[-1]
+        if not REINVEST_DIVIDENDS:
+            final_portfolio_value += non_reinvested_dividends
 
         # <<< FIX IMPLEMENTED HERE >>>
         # Calculate daily returns for the strategy
@@ -574,6 +650,22 @@ def run_backtest(sizing_method):
         print(
             f"Final Portfolio Value: ₹{final_portfolio_value:,.2f} (Total Return: {((final_portfolio_value - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100:.2f}%)"
         )
+        total_dividend_income = 0
+        if not transactions_log_df.empty:
+            dividend_log = transactions_log_df[
+                transactions_log_df["Type"] == "DIVIDEND"
+            ].copy()
+            if not dividend_log.empty:
+                dividend_log["TotalDividend"] = (
+                    dividend_log["Price"] * dividend_log["Quantity"]
+                )
+                total_dividend_income = dividend_log["TotalDividend"].sum()
+                # Save the detailed dividend log
+                dividend_log_filename = f"dividend_log_{sizing_method}.csv"
+                dividend_log.to_csv(dividend_log_filename, index=False)
+                print(f"Dividend log saved to {dividend_log_filename}")
+
+        print(f"Total Dividend Income: ₹{total_dividend_income:,.2f}")
         print(
             f"Max Capital Deployed: ₹{pf_value_df['Deployed Capital'].max():,.2f} ({ (pf_value_df['Deployed Capital'].max() / pf_value_df['Value'].max()) * 100:.2f}% of peak portfolio value)"
         )
@@ -597,7 +689,6 @@ def run_backtest(sizing_method):
         print(f"Avg. Averages per Trade: {avg_averages:.2f}")
         print(f"Max Averages for a Single Trade: {int(max_averages)}")
 
-    transactions_log_df = pd.DataFrame(transactions_list)
     if not transactions_log_df.empty:
         # Save the detailed transaction log
         log_filename = "trade_log.csv"
