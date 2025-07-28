@@ -2,6 +2,12 @@
 
 This project provides a comprehensive backtest for the "Nifty Shop" trading strategy on the Nifty 50 index, allowing for detailed performance analysis and strategy refinement.
 
+## Credits
+
+This strategy was inspired by the "Nifty Shop" concept by **FabTrader**. You can watch the original video here: [https://www.youtube.com/watch?v=GQ3gjYaislM](https://www.youtube.com/watch?v=GQ3gjYaislM)
+
+This backtest script is an enhanced version of originally created by [Mr. Chirag Patnaik](https://github.com/NakliTechie)
+
 ## Strategy: Nifty Shop
 
 The "Nifty Shop" strategy is a mean-reversion approach designed for beginners, focusing on systematically buying dips in Nifty 50 stocks.
@@ -142,10 +148,6 @@ The key results for this configuration are:
 This demonstrates that the strategy outperformed the benchmark during the tested period. For a full detailed breakdown, please run the backtest script.
 
 ---
-
-## Credits
-
-This strategy was inspired by the "Nifty Shop" concept by **fab trader**. You can watch the original video here: [https://www.youtube.com/watch?v=GQ3gjYaislM](https://www.youtube.com/watch?v=GQ3gjYaislM)
 
 ## Disclaimer
 
